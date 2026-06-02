@@ -40,11 +40,15 @@
             z-index: 50; 
             cursor: pointer; 
             pointer-events: auto; 
+        }
+
+        /* Hiệu ứng nhịp tim nhấp nháy cho nút quay (Chỉ chạy khi ĐÃ MỞ KHÓA) */
+        #spinner:not(.disabled) {
             animation: zoom-in-out 0.6s infinite alternate; 
         }
         
-        /* Khóa vòng quay khi đang xử lý */
-        .disabled { pointer-events: none !important; opacity: 0.7; filter: grayscale(30%); }
+        /* Khóa vòng quay khi chưa nhập thông tin hoặc đang xoay */
+        .disabled { pointer-events: none !important; opacity: 0.6; filter: grayscale(50%); }
         
         @keyframes zoom-in-out { 0% { transform: scale(0.95); } 100% { transform: scale(1.02); } }
         
@@ -63,7 +67,7 @@
         #submit-info { padding: 13px; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 8px; font-size: 1rem; background: #e60000; transition: 0.2s; }
         #submit-info:hover { background: #b30000; }
 
-        /* 2. Giao diện POPUP PHẦN THƯỞNG (Được làm đẹp cao cấp) */
+        /* 2. Giao diện POPUP PHẦN THƯỞNG */
         #reward-popup h2 { color: #cc0000; font-size: 1.5rem; line-height: 1.4; }
         
         /* Khung chứa ảnh quà */
@@ -85,16 +89,16 @@
 
     <div id="spin-wrapper">
         <img id="circle" src="circle.png" alt="Vòng quay">
-        <img id="spinner" src="spinner.png" alt="Nút quay">
+        <img id="spinner" class="disabled" src="spinner.png" alt="Nút quay">
     </div>
 
-    <div class="overlay" id="overlay"></div>
+    <div class="overlay active" id="overlay"></div>
 
-    <div class="popup-box" id="info-popup">
+    <div class="popup-box active" id="info-popup">
         <h2>Nhập thông tin để nhận lượt quay</h2>
         <input type="text" id="name" placeholder="Họ và tên của bạn">
         <input type="text" id="phone" placeholder="Số điện thoại của bạn">
-        <button id="submit-info">Xác nhận & Quay ngay</button>
+        <button id="submit-info">Xác nhận thông tin</button>
     </div>
 
     <div class="popup-box" id="reward-popup">
@@ -131,6 +135,10 @@
         let totalDegrees = 0; 
         let reward = "";
 
+        // Biến toàn cục lưu thông tin khách hàng tạm thời sau khi điền Form
+        let savedName = "";
+        let savedPhone = "";
+
         // Hàm gọi lên Sheet lấy số lượng tồn kho xe điện thực tế
         async function checkLiveStock() {
             if (!SCRIPT_URL || SCRIPT_URL.includes("DÁN_ĐƯỜNG_LINK")) return 5; 
@@ -143,28 +151,30 @@
             }
         }
 
-        // BƯỚC 1: Bấm nút giữa vòng quay -> Chưa xoay ngay mà hiện Form bắt nhập thông tin trước
-        spinner.addEventListener('click', () => {
-            if (spinner.classList.contains('disabled')) return;
+        // BƯỚC 1: Khách điền thông tin xong bấm nút "Xác nhận thông tin"
+        submitInfoBtn.addEventListener('click', () => {
+            savedName = document.getElementById('name').value.trim();
+            savedPhone = document.getElementById('phone').value.trim();
             
-            // Hiện Popup nhập thông tin
-            infoPopup.classList.add('active');
-            overlay.classList.add('active');
-        });
-
-        // BƯỚC 2: Khách điền thông tin xong bấm nút "Xác nhận & Quay ngay"
-        submitInfoBtn.addEventListener('click', async () => {
-            const name = document.getElementById('name').value.trim();
-            const phone = document.getElementById('phone').value.trim();
-            
-            if (!name || !phone) {
+            if (!savedName || !savedPhone) {
                 alert("Vui lòng nhập đầy đủ họ tên và số điện thoại để tham gia!");
                 return;
             }
 
-            // Đổi trạng thái nút để tránh bấm liên tục lúc đang check kho
-            submitInfoBtn.innerText = "Đang xử lý...";
-            submitInfoBtn.style.pointerEvents = "none";
+            // Ẩn popup thông tin và tắt nền mờ để người dùng thấy rõ vòng quay
+            infoPopup.classList.remove('active');
+            overlay.classList.remove('active');
+            
+            // MỞ KHÓA nút Spinner chính giữa, nút sẽ bắt đầu nhấp nháy hiệu ứng mời gọi bấm
+            spinner.classList.remove('disabled');
+        });
+
+        // BƯỚC 2: Người dùng tự tay click vào nút Spinner để thực hiện quay thưởng
+        spinner.addEventListener('click', async () => {
+            if (spinner.classList.contains('disabled')) return;
+            
+            // Khóa ngay nút quay lại để tránh việc khách click liên tục nhiều lần
+            spinner.classList.add('disabled');
 
             // Kiểm tra kho thực tế trên Sheet trước khi quyết định giải thưởng
             const currentStock = await checkLiveStock();
@@ -172,7 +182,7 @@
             let random = Math.floor(Math.random() * 100); 
             let targetDegrees = 0; 
 
-            // Thuật toán tính giải thưởng
+            // Thuật toán tính giải thưởng dựa trên tỷ lệ và kho thực tế
             if (random >= 0 && random < RATE_XE_DIEN && currentStock > 0) {
                 targetDegrees = 270; // Ô ĐỎ ở dưới
                 reward = "Xe máy điện ICON e:";
@@ -186,11 +196,7 @@
                 reward = "Chúc bạn may mắn lần sau";
             }
 
-            // Tắt Popup nhập thông tin để nhường chỗ cho vòng quay hoạt động
-            infoPopup.classList.remove('active');
-            spinner.classList.add('disabled'); // Khóa nút quay chính
-
-            // Tính toán góc quay và kích hoạt xoay bánh xe
+            // Tính toán góc quay cộng dồn vòng vật lý để bánh xe xoay tít
             let currentMod = totalDegrees % 360;
             let diff = targetDegrees - currentMod;
             if (diff <= 0) diff += 360; 
@@ -198,48 +204,51 @@
             totalDegrees += (360 * 4) + diff; 
             circle.style.transform = `rotate(${totalDegrees}deg)`;
 
-            // ĐỒNG BỘ NẦM: Gửi data lên Google Sheet ngay lúc đang xoay (tiết kiệm thời gian)
+            // ĐỒNG BỘ NẦM: Gửi data lên Google Sheet ngay lúc bánh xe đang xoay (tiết kiệm thời gian)
             if (SCRIPT_URL && !SCRIPT_URL.includes("DÁN_ĐƯỜNG_LINK")) {
                 fetch(SCRIPT_URL, {
                     method: "POST",
-                    body: JSON.stringify({ name: name, phone: phone, reward: reward })
+                    body: JSON.stringify({ name: savedName, phone: savedPhone, reward: reward })
                 }).catch(error => console.error("Lỗi kết nối âm thầm:", error));
             }
 
-            // BƯỚC 3: Chờ vòng quay xoay xong 3 giây -> Hiện kết quả kèm ảnh quà tương ứng
+            // BƯỚC 3: Chờ vòng quay xoay xong đúng 3 giây -> Hiện kết quả đẹp đẽ kèm ảnh quà
             setTimeout(() => {
                 if (reward === "Chúc bạn may mắn lần sau") {
                     rewardTitle.innerHTML = "Tiếc quá!<br>Chúc bạn may mắn lần sau nhé";
-                    rewardImg.src = "may-man.png"; // Ảnh icon buồn hoặc may mắn lần sau
+                    rewardImg.src = "may-man.png"; // Đường dẫn ảnh chúc may mắn lần sau
                 } else {
                     rewardTitle.innerHTML = `Tuyệt vời! Bạn đã trúng:<br><span style="color:#e60000">${reward}</span>`;
                     
-                    // Tự động đổi ảnh theo đúng phần quà trúng
+                    // Tự động đổi ảnh hiển thị khớp với phần quà trúng thưởng
                     if (reward === "Xe máy điện ICON e:") {
-                        rewardImg.src = "xe-dien.png"; 
+                        rewardImg.src = "xe-dien.png"; // Đường dẫn ảnh xe điện
                     } else if (reward === "Mũ bảo hiểm 3/4") {
-                        rewardImg.src = "mu-bao-hiem.png"; 
+                        rewardImg.src = "mu-bao-hiem.png"; // Đường dẫn ảnh mũ bảo hiểm
                     }
                 }
 
-                // Hiện popup thông báo quà
+                // Hiện popup thông báo quà và bật lại nền mờ phía sau
+                overlay.classList.add('active');
                 rewardPopup.classList.add('active');
-                
-                // Khôi phục lại trạng thái nút nhập thông tin ban đầu cho lượt sau
-                submitInfoBtn.innerText = "Xác nhận & Quay ngay";
-                submitInfoBtn.style.pointerEvents = "auto";
             }, 3000); 
         });
 
-        // BƯỚC 4: Bấm nút đóng ở bảng nhận quà để reset trò chơi mới
+        // BƯỚC 4: Bấm nút đóng ở bảng nhận quà để reset hệ thống cho lượt chơi mới
         closeRewardBtn.addEventListener('click', () => {
+            // Ẩn popup kết quả phần thưởng đi
             rewardPopup.classList.remove('active');
-            overlay.classList.remove('active');
-            spinner.classList.remove('disabled'); // Mở khóa vòng quay cho người tiếp theo
             
-            // Xóa sạch thông tin cũ trong ô nhập liệu
+            // Xóa sạch thông tin cũ trong ô nhập liệu và các biến tạm
             document.getElementById('name').value = "";
             document.getElementById('phone').value = "";
+            savedName = "";
+            savedPhone = "";
+            
+            // Quay trở lại trạng thái ban đầu: Hiện form nhập thông tin, bật nền mờ, khóa nút quay
+            infoPopup.classList.add('active');
+            overlay.classList.add('active');
+            spinner.classList.add('disabled'); 
         });
     </script>
 </body>
