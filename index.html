@@ -1,161 +1,143 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vòng Quay May Mắn - Đồng Bộ Google Sheet</title>
-    <style>
-        /* CSS Giao diện chuẩn */
-        * { padding: 0; margin: 0; box-sizing: border-box; }
-        body { width: 100vw; height: 100vh; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        #spin-wrapper { 
-            width: 100%; 
-            height: 100%; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            position: relative; 
-            background: url('background.png') center/cover no-repeat; 
+<script>
+    // ================= CẤU HÌNH LIÊN KẾT GOOGLE SHEET =================
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwCcEAzB0-T9vkYVQazW3h5z7clF6Nyu9-9mxPMaNEU5gVqevO_WqPiWhLC_0HiR3hi/exec";
+    
+    // TỶ LỆ TRÚNG THƯỞNG THEO YÊU CẦU MỚI
+    const RATE_XE_DIEN = 3;   // 3% trúng xe máy điện
+    const RATE_MU_BH = 20;    // 20% trúng mũ bảo hiểm
+    // (77% còn lại tự động rơi vào ô "Chúc bạn may mắn lần sau")
+    // =================================================================
+
+    const spinner = document.getElementById('spinner');
+    const circle = document.getElementById('circle');
+    const overlay = document.getElementById('overlay');
+    
+    const infoPopup = document.getElementById('info-popup');
+    const submitInfoBtn = document.getElementById('submit-info');
+    
+    const rewardPopup = document.getElementById('reward-popup');
+    const rewardTitle = document.getElementById('reward-title');
+    const rewardImg = document.getElementById('reward-img');
+    const closeRewardBtn = document.getElementById('close-reward');
+    
+    let totalDegrees = 0; 
+    let isSpinning = false;
+    let reward = "";
+
+    let savedName = "";
+    let savedPhone = "";
+
+    // Hàm kiểm tra số lượng tồn kho thực tế từ ô F2 trên Google Sheet
+    async function checkLiveStock() {
+        if (!SCRIPT_URL) return 0; 
+        try {
+            let response = await fetch(SCRIPT_URL);
+            let json = await response.json();
+            return parseInt(json.data) || 0;
+        } catch (e) {
+            console.error("Lỗi kết nối kiểm tra kho:", e);
+            return 0; // Nếu lỗi mạng, mặc định coi như bằng 0 để an toàn cho kho
         }
+    }
+
+    // 1. XỬ LÝ KHI BẤM NÚT XÁC NHẬN THÔNG TIN
+    submitInfoBtn.addEventListener('click', () => {
+        savedName = document.getElementById('name').value.trim();
+        savedPhone = document.getElementById('phone').value.trim();
         
-        /* Vòng quay */
-        #circle { 
-            width: 90%; 
-            max-width: 500px; 
-            position: absolute; 
-            top: 120px; left: 0; right: 0; bottom: 0; 
-            margin: auto; 
-            z-index: 1; 
-            pointer-events: none; 
-            transition: transform 3s ease-out; 
-        }
-        
-        /* Nút quay / Kim chỉ ở giữa */
-        #spinner { 
-            width: 500px; 
-            position: absolute; 
-            top: 120px; left: 0; right: 0; bottom: 0; 
-            margin: auto; 
-            z-index: 50; 
-            cursor: pointer; 
-            pointer-events: auto; 
+        if (!savedName || !savedPhone) {
+            alert("Vui lòng nhập đầy đủ họ tên và số điện thoại để tham gia!");
+            return;
         }
 
-        /* Hiệu ứng nhịp tim nhấp nháy cho nút quay (Chỉ chạy khi ĐÃ MỞ KHÓA) */
-        #spinner:not(.disabled) {
-            animation: zoom-in-out 0.6s infinite alternate; 
+        // Ẩn popup nhập thông tin để chuẩn bị chơi
+        infoPopup.classList.remove('active');
+        overlay.classList.remove('active');
+        
+        // QUAN TRỌNG: Gỡ bỏ class disabled để kích hoạt nút quay nhấp nháy!
+        spinner.classList.remove('disabled');
+    });
+
+    // 2. XỬ LÝ KHI BẤM NÚT QUAY (SPINNER)
+    spinner.addEventListener('click', async () => {
+        if (isSpinning) return; // Nếu đang quay thì chặn không cho bấm tiếp
+        isSpinning = true;
+        spinner.classList.add('disabled'); // Khóa nút quay lại ngay lúc đang xoay
+
+        // Bước A: Gọi lên Google Sheet check xem ô F2 đang là 1 hay 0
+        const currentStock = await checkLiveStock();
+
+        // Bước B: Thuật toán tính toán phần thưởng ngẫu nhiên (Từ 0 đến 99)
+        let random = Math.floor(Math.random() * 100);
+        let targetAngle = 0; // Góc quay mục tiêu
+
+        // KIỂM TRA ĐIỀU KIỆN TRÚNG XE ĐIỆN (Phải trúng tỷ lệ 3% VÀ Kho F2 phải > 0)
+        if (random < RATE_XE_DIEN && currentStock > 0) {
+            reward = "Xe máy điện ICON e:";
+            targetAngle = 60; // Tọa độ ô Xe điện trên ảnh vòng quay của cậu (Cậu tùy chỉnh lại số độ này nha)
+            rewardImg.src = "xe-dien.png"; // Thay bằng link ảnh xe điện của cậu
+        } 
+        // TRÚNG MŨ BẢO HIỂM (Tỷ lệ từ 3% đến 23%)
+        else if (random < (RATE_XE_DIEN + RATE_MU_BH)) {
+            reward = "Mũ bảo hiểm";
+            targetAngle = 180; // Tọa độ ô Mũ bảo hiểm (Cậu tùy chỉnh lại nha)
+            rewardImg.src = "mu-bao-hiem.png"; // Thay bằng link ảnh mũ bảo hiểm
+        } 
+        // MAY MẮN LẦN SAU (77% còn lại hoặc khi xe điện trúng nhưng kho bằng 0)
+        else {
+            reward = "Chúc bạn may mắn lần sau";
+            targetAngle = 300; // Tọa độ ô May mắn (Cậu tùy chỉnh lại nha)
+            rewardImg.src = "may-man.png"; // Thay bằng link ảnh mặt mếu/may mắn lần sau
         }
-        
-        /* Khóa vòng quay khi chưa nhập thông tin hoặc đang xoay */
-        .disabled { pointer-events: none !important; opacity: 0.6; filter: grayscale(50%); }
-        
-        @keyframes zoom-in-out { 0% { transform: scale(0.95); } 100% { transform: scale(1.02); } }
-        
-        /* Nền mờ phía sau các Popup */
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 99; opacity: 0; pointer-events: none; transition: 0.3s; }
-        .overlay.active { opacity: 1; pointer-events: auto; }
 
-        /* Khung Popup Chung */
-        .popup-box { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0); background: white; padding: 28px; border-radius: 16px; display: flex; flex-direction: column; gap: 15px; z-index: 100; transition: transform 0.3s ease-out; min-width: 340px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.35); }
-        .popup-box.active { transform: translate(-50%, -50%) scale(1); }
-        
-        /* 1. Giao diện POPUP NHẬP THÔNG TIN */
-        #info-popup h2 { color: #333; font-size: 1.35rem; margin-bottom: 5px; }
-        #info-popup input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; outline: none; transition: 0.2s; }
-        #info-popup input:focus { border-color: #e60000; box-shadow: 0 0 5px rgba(230,0,0,0.2); }
-        #submit-info { padding: 13px; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 8px; font-size: 1rem; background: #e60000; transition: 0.2s; }
-        #submit-info:hover { background: #b30000; }
+        // Bước C: Tính tổng số độ quay (Quay ít nhất 5 vòng = 1800 độ để tạo hiệu ứng đẹp mắt)
+        totalDegrees += 1800 + (360 - (totalDegrees % 360)) + targetAngle;
+        circle.style.transform = `rotate(${totalDegrees}deg)`;
 
-        /* 2. Giao diện POPUP PHẦN THƯỞNG */
-        #reward-popup h2 { color: #cc0000; font-size: 1.5rem; line-height: 1.4; }
-        
-        /* Khung chứa ảnh quà */
-        .reward-img-container { width: 100%; display: flex; justify-content: center; align-items: center; margin: 10px 0; min-height: 150px; }
-        .reward-img-container img { max-width: 180px; max-height: 180px; object-fit: contain; animation: bounce 0.8s ease-out; }
-        
-        #close-reward { padding: 12px; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 8px; font-size: 1rem; background: #333; transition: 0.2s; }
-        #close-reward:hover { background: #000; }
-
-        @keyframes bounce {
-            0% { transform: scale(0.3); opacity: 0; }
-            50% { transform: scale(1.1); }
-            70% { transform: scale(0.9); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-    </style>
-</head>
-<body>
-
-    <div id="spin-wrapper">
-        <img id="circle" src="circle.png" alt="Vòng quay">
-        <img id="spinner" class="disabled" src="spinner.png" alt="Nút quay">
-    </div>
-
-    <div class="overlay active" id="overlay"></div>
-
-    <div class="popup-box active" id="info-popup">
-        <h2>Nhập thông tin Khách hàng</h2>
-        <input type="text" id="name" placeholder="Họ và tên của bạn">
-        <input type="text" id="phone" placeholder="Số điện thoại của bạn">
-        <button id="submit-info">Xác nhận thông tin</button>
-    </div>
-
-    <div class="popup-box" id="reward-popup">
-        <h2 id="reward-title">Chúc mừng bạn!</h2>
-        <div class="reward-img-container">
-            <img id="reward-img" src="" alt="Hình ảnh phần thưởng">
-        </div>
-        <button id="close-reward">Quay tiếp lượt mới</button>
-    </div>
-
-    <script>
-        // ================= CẤU HÌNH LIÊN KẾT GOOGLE SHEET =================
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwCcEAzB0-T9vkYVQazW3h5z7clF6Nyu9-9mxPMaNEU5gVqevO_WqPiWhLC_0HiR3hi/exec";
-        
-        // ĐÃ CẬP NHẬT TỶ LỆ TRÚNG THƯỞNG THEO YÊU CẦU MỚI
-        const RATE_XE_DIEN = 3;   // 3% trúng xe máy điện
-        const RATE_MU_BH = 20;    // 20% trúng mũ bảo hiểm
-        // (77% còn lại tự động rơi vào ô "Chúc bạn may mắn lần sau")
-        // =================================================================
-
-        const spinner = document.getElementById('spinner');
-        const circle = document.getElementById('circle');
-        const overlay = document.getElementById('overlay');
-        
-        const infoPopup = document.getElementById('info-popup');
-        const submitInfoBtn = document.getElementById('submit-info');
-        
-        const rewardPopup = document.getElementById('reward-popup');
-        const rewardTitle = document.getElementById('reward-title');
-        const rewardImg = document.getElementById('reward-img');
-        const closeRewardBtn = document.getElementById('close-reward');
-        
-        let totalDegrees = 0; 
-        let reward = "";
-
-        let savedName = "";
-        let savedPhone = "";
-
-        async function checkLiveStock() {
-            if (!SCRIPT_URL || SCRIPT_URL.includes("DÁN_ĐƯỜNG_LINK")) return 5; 
-            try {
-                let response = await fetch(SCRIPT_URL);
-                let json = await response.json();
-                return parseInt(json.data) || 0;
-            } catch (e) {
-                return 0; 
+        // Bước D: Đợi vòng quay dừng hẳn (3 giây giống CSS transition) rồi hiển thị kết quả
+        setTimeout(async () => {
+            // Cập nhật nội dung Popup kết quả
+            if (reward === "Chúc bạn may mắn lần sau") {
+                rewardTitle.innerHTML = `Tiếc quá!<br><span style="font-size:1.1rem; color:#555; font-weight:normal;">Chúc bạn may mắn lần sau nhé!</span>`;
+            } else {
+                rewardTitle.innerHTML = `Chúc mừng bạn!<br><span style="font-size:1.2rem; color:#e60000;">Bạn đã trúng: ${reward}</span>`;
             }
-        }
-
-        submitInfoBtn.addEventListener('click', () => {
-            savedName = document.getElementById('name').value.trim();
-            savedPhone = document.getElementById('phone').value.trim();
             
-            if (!savedName || !savedPhone) {
-                alert("Vui lòng nhập đầy đủ họ tên và số điện thoại để tham gia!");
-                return;
+            // Hiển thị Popup phần thưởng
+            overlay.classList.add('active');
+            rewardPopup.classList.add('active');
+
+            // Bước E: Âm thầm gửi dữ liệu lên Google Sheet để lưu thông tin và trừ kho F2
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Dùng chế độ no-cors để bypass bộ chặn bảo mật của Google
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: savedName,
+                        phone: savedPhone,
+                        reward: reward
+                    })
+                });
+            } catch (error) {
+                console.error("Lỗi khi đồng bộ lên Google Sheet:", error);
             }
 
-            infoPopup.classList.remove('active');
-            overlay.classList.remove('active');
+            isSpinning = false;
+        }, 3100); // 3100ms để trừ hao thời gian mượt mà sau hiệu ứng dừng quay
+    });
+
+    // 3. XỬ LÝ KHI BẤM NÚT QUAY TIẾP LƯỢT MỚI
+    closeRewardBtn.addEventListener('click', () => {
+        // Ẩn popup thông báo quà đi
+        rewardPopup.classList.remove('active');
+        
+        // Reset sạch dữ liệu form cũ để người tiếp theo nhập
+        document.getElementById('name').value = "";
+        document.getElementById('phone').value = "";
+        
+        // Hiện lại popup thông tin từ đầu
+        infoPopup.classList.add('active');
+        overlay.classList.add('active');
+    });
+</script>
